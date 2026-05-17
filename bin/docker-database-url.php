@@ -64,6 +64,12 @@ function isUsableUrl(?string $url, bool $onRailway): bool
         return false;
     }
 
+    // Reject empty user/password/database (e.g. mysql://:@host:3306/)
+    $database = trim($parts['path'] ?? '', '/');
+    if ($database === '' || !isset($parts['user']) || $parts['user'] === '') {
+        return false;
+    }
+
     return true;
 }
 
@@ -111,12 +117,14 @@ if ($url === '') {
 }
 
 if ($url === '') {
-    fwrite(STDERR, "\nERROR: No valid database configuration.\n");
+    fwrite(STDERR, "\nERROR: DATABASE_URL is invalid or incomplete.\n");
+    fwrite(STDERR, "Your URL looks like: mysql://:@host:3306/  (missing user, password, database).\n");
     if ($onRailway) {
-        fwrite(STDERR, "Railway fix (choose ONE):\n");
-        fwrite(STDERR, "  A) App → Variables → Reference from MySQL: MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
-        fwrite(STDERR, "  B) App → Variables → DATABASE_URL = reference MYSQL_URL from MySQL service\n");
-        fwrite(STDERR, "Delete MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD if you typed them manually.\n");
+        fwrite(STDERR, "\nRailway fix:\n");
+        fwrite(STDERR, "  1. DELETE the manual DATABASE_URL on your app service.\n");
+        fwrite(STDERR, "  2. Open MySQL service → Variables → copy MYSQL_URL (full mysql://... string).\n");
+        fwrite(STDERR, "  3. App service → New variable DATABASE_URL → paste that value exactly.\n");
+        fwrite(STDERR, "  OR add references: MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
     }
     exit(1);
 }

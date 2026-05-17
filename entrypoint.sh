@@ -5,11 +5,16 @@ export PORT="${PORT:-80}"
 export APP_ENV="${APP_ENV:-prod}"
 export APP_DEBUG="${APP_DEBUG:-0}"
 
+# DEFAULT_URI for Symfony router (Railway sets RAILWAY_PUBLIC_DOMAIN)
+if [ -z "$DEFAULT_URI" ] && [ -n "$RAILWAY_PUBLIC_DOMAIN" ]; then
+  export DEFAULT_URI="https://${RAILWAY_PUBLIC_DOMAIN}"
+fi
+export DEFAULT_URI="${DEFAULT_URI:-http://localhost}"
+
 # Build DATABASE_URL (debug info goes to stderr → Railway logs)
 export DATABASE_URL="$(php /app/bin/docker-database-url.php)"
 
-# Symfony must see DATABASE_URL at runtime (prod cache is built without it)
-php -r 'file_put_contents("/app/.env.local", "DATABASE_URL=".var_export(getenv("DATABASE_URL"), true).PHP_EOL);'
+php /app/bin/write-env-local.php
 
 echo "Clearing Symfony cache for production..."
 php bin/console cache:clear --env=prod --no-warmup
