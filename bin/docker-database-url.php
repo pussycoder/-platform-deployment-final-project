@@ -45,13 +45,18 @@ function buildUrl(string $host, string $user, string $pass, string $db, string $
     );
 }
 
+function isUnresolvedTemplate(?string $value): bool
+{
+    return $value !== null && $value !== '' && (str_contains($value, '${{') || str_contains($value, '${'));
+}
+
 function isUsableUrl(?string $url, bool $onRailway): bool
 {
     if ($url === null || $url === '') {
         return false;
     }
 
-    if (str_contains($url, '${') || str_contains($url, 'change_me')) {
+    if (isUnresolvedTemplate($url) || str_contains($url, 'change_me')) {
         return false;
     }
 
@@ -90,7 +95,7 @@ $url = '';
 
 $host = strip_quotes(getenv('MYSQLHOST') ?: getenv('MYSQL_HOST') ?: '');
 $user = strip_quotes(getenv('MYSQLUSER') ?: getenv('MYSQL_USER') ?: '');
-$pass = strip_quotes(getenv('MYSQLPASSWORD') ?: getenv('MYSQL_PASSWORD') ?: '') ?? '';
+$pass = strip_quotes(getenv('MYSQLPASSWORD') ?: getenv('MYSQL_PASSWORD') ?: getenv('MYSQL_ROOT_PASSWORD') ?: '') ?? '';
 $db = strip_quotes(getenv('MYSQLDATABASE') ?: getenv('MYSQL_DATABASE') ?: '');
 $port = strip_quotes(getenv('MYSQLPORT') ?: getenv('MYSQL_PORT') ?: '3306') ?? '3306';
 
@@ -100,9 +105,11 @@ if ($onRailway && $host === 'db') {
     $host = '';
 }
 
-if ($host && $user && $db) {
+if ($host && $user && $db && !isUnresolvedTemplate($host) && !isUnresolvedTemplate($user) && !isUnresolvedTemplate($db)) {
     $url = buildUrl($host, $user, $pass, $db, $port);
     fwrite(STDERR, "Built DATABASE_URL from MySQL variables.\n");
+} elseif ($host && isUnresolvedTemplate($host)) {
+    fwrite(STDERR, "WARNING: MYSQLHOST still contains Railway template syntax (\${{...}}). Use Variable References on the app service.\n");
 }
 
 if ($url === '') {
@@ -120,11 +127,10 @@ if ($url === '') {
     fwrite(STDERR, "\nERROR: DATABASE_URL is invalid or incomplete.\n");
     fwrite(STDERR, "Your URL looks like: mysql://:@host:3306/  (missing user, password, database).\n");
     if ($onRailway) {
-        fwrite(STDERR, "\nRailway fix:\n");
-        fwrite(STDERR, "  1. DELETE the manual DATABASE_URL on your app service.\n");
-        fwrite(STDERR, "  2. Open MySQL service → Variables → copy MYSQL_URL (full mysql://... string).\n");
-        fwrite(STDERR, "  3. App service → New variable DATABASE_URL → paste that value exactly.\n");
-        fwrite(STDERR, "  OR add references: MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
+        fwrite(STDERR, "\nRailway fix (do NOT copy/paste strings with \${{...}}):\n");
+        fwrite(STDERR, "  App service → Variables → New Variable → Variable Reference → MySQL → pick:\n");
+        fwrite(STDERR, "    MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
+        fwrite(STDERR, "  OR one reference: DATABASE_URL → MySQL → MYSQL_URL\n");
     }
     exit(1);
 }
