@@ -94,11 +94,7 @@
 			</style>
 		{% endblock %}
 
-		{% block javascripts %}
-			{% block importmap %}
-				{{ importmap('app') }}
-			{% endblock %}
-		{% endblock %}
+		{% block javascripts %}{% endblock %}
 
 		{% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
 		{% if frankenphpHotReload %}

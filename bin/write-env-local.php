@@ -14,9 +14,15 @@ if ($defaultUri === '') {
     $defaultUri = 'http://localhost';
 }
 
+$appSecret = getenv('APP_SECRET') ?: '';
+if ($appSecret === '') {
+    fwrite(STDERR, "WARNING: APP_SECRET is not set.\n");
+}
+
 $lines = [
     'APP_ENV='.(getenv('APP_ENV') ?: 'prod'),
     'APP_DEBUG='.(getenv('APP_DEBUG') ?: '0'),
+    'APP_SECRET='.var_export($appSecret, true),
     'DATABASE_URL='.var_export($databaseUrl, true),
     'DEFAULT_URI='.var_export($defaultUri, true),
 ];

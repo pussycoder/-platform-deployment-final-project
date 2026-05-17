@@ -5,24 +5,26 @@ export PORT="${PORT:-80}"
 export APP_ENV="${APP_ENV:-prod}"
 export APP_DEBUG="${APP_DEBUG:-0}"
 
-# DEFAULT_URI for Symfony router (Railway sets RAILWAY_PUBLIC_DOMAIN)
 if [ -z "$DEFAULT_URI" ] && [ -n "$RAILWAY_PUBLIC_DOMAIN" ]; then
   export DEFAULT_URI="https://${RAILWAY_PUBLIC_DOMAIN}"
 fi
 export DEFAULT_URI="${DEFAULT_URI:-http://localhost}"
 
-# Build DATABASE_URL (debug info goes to stderr → Railway logs)
 export DATABASE_URL="$(php /app/bin/docker-database-url.php)"
 
 php /app/bin/write-env-local.php
 
+mkdir -p /app/var/cache /app/var/log
+chown -R www-data:www-data /app/var /app/.env.local
+chmod -R 775 /app/var
+
 echo "Clearing Symfony cache for production..."
-php bin/console cache:clear --env=prod --no-warmup
-php bin/console cache:warmup --env=prod
+su -s /bin/sh www-data -c "php bin/console cache:clear --env=prod --no-warmup"
+su -s /bin/sh www-data -c "php bin/console cache:warmup --env=prod"
 
 echo "Running database migrations (with retries)..."
 for i in $(seq 1 30); do
-  if php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration; then
+  if su -s /bin/sh www-data -c "php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration"; then
     echo "Migrations complete."
     break
   fi
@@ -33,6 +35,8 @@ for i in $(seq 1 30); do
   echo "Database not ready yet, retrying ($i/30)..."
   sleep 3
 done
+
+chown -R www-data:www-data /app/var
 
 echo "Starting PHP-FPM..."
 php-fpm -D

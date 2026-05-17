@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     zlib1g-dev \
     libzip-dev \
-    && docker-php-ext-install pdo pdo_mysql \
+    libicu-dev \
+    && docker-php-ext-install pdo pdo_mysql intl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
@@ -53,7 +54,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     nginx \
     curl \
-    && docker-php-ext-install pdo pdo_mysql \
+    libicu-dev \
+    && docker-php-ext-install pdo pdo_mysql intl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application files from builder stage
