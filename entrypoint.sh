@@ -1,13 +1,10 @@
 #!/bin/bash
 set -e
 
-# Railway injects PORT; default to 80 for local Docker
 export PORT="${PORT:-80}"
 
+# stderr from the script logs the resolved host; stdout is the URL only
 export DATABASE_URL="$(php /app/bin/docker-database-url.php)"
-
-DB_HOST="$(php -r 'echo parse_url(getenv("DATABASE_URL"), PHP_URL_HOST) ?: "unknown";')"
-echo "Database host: ${DB_HOST}"
 
 echo "Running database migrations..."
 php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
