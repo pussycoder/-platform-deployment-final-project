@@ -42,7 +42,7 @@ RUN composer install --no-interaction --optimize-autoloader --no-ansi || true
 
 RUN php bin/console importmap:install --no-interaction
 
-RUN php bin/console cache:warmup --env=prod --no-debug || true
+# Cache is warmed at container start once DATABASE_URL is available (see entrypoint.sh)
 
 # Runtime stage
 FROM php:8.3-fpm AS runtime
