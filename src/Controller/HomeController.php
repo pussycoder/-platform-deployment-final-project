@@ -19,6 +19,7 @@ final class HomeController extends AbstractController
             $conn->executeQuery('SELECT 1');
             $dbWorking = true;
         } catch (\Exception $e) {
+            error_log('Database check failed: '.$e->getMessage());
             $dbWorking = false;
         }
 
