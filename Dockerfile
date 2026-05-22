@@ -1,4 +1,4 @@
-# PHP-FPM base image
+ # PHP-FPM base image
 FROM php:8.3-fpm AS builder
 
 WORKDIR /app
@@ -77,6 +77,9 @@ RUN rm -rf /etc/nginx/conf.d/* \
 
 # Copy custom Nginx server block
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# PHP-FPM: pass DATABASE_URL and other env vars to web requests
+COPY docker/php-fpm-env.conf /usr/local/etc/php-fpm.d/zz-env.conf
 
 # Copy Docker entrypoint script
 COPY entrypoint.sh /usr/local/bin/docker-entrypoint.sh

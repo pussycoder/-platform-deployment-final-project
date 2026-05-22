@@ -15,7 +15,12 @@ export DATABASE_URL="$(php /app/bin/docker-database-url.php)"
 php /app/bin/write-env-local.php
 
 mkdir -p /app/var/cache /app/var/log
-chown -R www-data:www-data /app/var /app/.env.local
+chown www-data:www-data /app/.env.local
+
+echo "Compiling environment for production..."
+su -s /bin/sh www-data -c "cd /app && composer dump-env prod"
+chown www-data:www-data /app/.env.local.php 2>/dev/null || true
+chown -R www-data:www-data /app/var
 chmod -R 775 /app/var
 
 echo "Clearing Symfony cache for production..."

@@ -6,7 +6,8 @@ $databaseUrl = getenv('DATABASE_URL') ?: '';
 $defaultUri = getenv('DEFAULT_URI') ?: '';
 $railwayDomain = getenv('RAILWAY_PUBLIC_DOMAIN') ?: '';
 
-if ($defaultUri === '' && $railwayDomain !== '') {
+// Prefer Railway public URL over leftover local/docker DEFAULT_URI
+if ($railwayDomain !== '' && ($defaultUri === '' || str_contains($defaultUri, 'localhost'))) {
     $defaultUri = 'https://'.$railwayDomain;
 }
 
