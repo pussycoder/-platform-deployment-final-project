@@ -139,6 +139,10 @@ if (!str_contains($url, 'serverVersion=')) {
     $url .= (str_contains($url, '?') ? '&' : '?').'serverVersion=8.0.32&charset=utf8mb4';
 }
 
+if (!str_contains($url, 'connect_timeout=')) {
+    $url .= '&connect_timeout=5';
+}
+
 $parts = parse_url($url);
 fwrite(STDERR, sprintf("Database host: %s\n", $parts['host'] ?? 'unknown'));
 fwrite(STDERR, "==================================\n");

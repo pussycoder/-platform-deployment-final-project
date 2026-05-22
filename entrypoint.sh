@@ -16,38 +16,29 @@ php /app/bin/write-env-local.php
 
 mkdir -p /app/var/cache /app/var/log
 chown www-data:www-data /app/.env.local
-
-echo "Compiling environment for production..."
-if su -s /bin/sh www-data -c "php bin/console dotenv:dump prod"; then
-  chown www-data:www-data /app/.env.local.php
-else
-  echo "WARNING: dotenv:dump failed; using .env.local only."
-fi
 chown -R www-data:www-data /app/var
 chmod -R 775 /app/var
 
 echo "Clearing Symfony cache for production..."
 su -s /bin/sh www-data -c "php bin/console cache:clear --env=prod --no-warmup"
 su -s /bin/sh www-data -c "php bin/console cache:warmup --env=prod"
-
-echo "Running database migrations (with retries)..."
-for i in $(seq 1 30); do
-  if su -s /bin/sh www-data -c "php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration"; then
-    echo "Migrations complete."
-    break
-  fi
-  if [ "$i" -eq 30 ]; then
-    echo "ERROR: Could not run migrations after 30 attempts."
-    exit 1
-  fi
-  echo "Database not ready yet, retrying ($i/30)..."
-  sleep 3
-done
-
 chown -R www-data:www-data /app/var
 
 echo "Starting PHP-FPM..."
 php-fpm -D
+
+# Run migrations in background so Nginx can start immediately (avoids 502 while DB warms up)
+(
+  for i in $(seq 1 15); do
+    if su -s /bin/sh www-data -c "php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration"; then
+      echo "Migrations complete."
+      exit 0
+    fi
+    echo "Database not ready, retry ($i/15)..."
+    sleep 5
+  done
+  echo "WARNING: Migrations did not run. Check MySQL is Online and DATABASE_URL is a MySQL reference."
+) &
 
 echo "Starting Nginx on port ${PORT}..."
 if [ "$PORT" != "80" ]; then
