@@ -50,7 +50,7 @@ function isUnresolvedTemplate(?string $value): bool
     return $value !== null && $value !== '' && (str_contains($value, '${{') || str_contains($value, '${'));
 }
 
-function isUsableUrl(?string $url, bool $onRailway): bool
+function isUsableUrl(?string $url, bool $onRailway, bool $strictHost = true): bool
 {
     if ($url === null || $url === '') {
         return false;
@@ -65,17 +65,29 @@ function isUsableUrl(?string $url, bool $onRailway): bool
         return false;
     }
 
-    if ($onRailway && in_array($parts['host'], ['localhost', '127.0.0.1', 'db'], true)) {
+    if ($strictHost && $onRailway && in_array($parts['host'], ['localhost', '127.0.0.1', 'db'], true)) {
         return false;
     }
 
-    // Reject empty user/password/database (e.g. mysql://:@host:3306/)
     $database = trim($parts['path'] ?? '', '/');
     if ($database === '' || !isset($parts['user']) || $parts['user'] === '') {
         return false;
     }
 
     return true;
+}
+
+function appendParams(string $url): string
+{
+    if (!str_contains($url, 'serverVersion=')) {
+        $url .= (str_contains($url, '?') ? '&' : '?').'serverVersion=8.0.32&charset=utf8mb4';
+    }
+
+    if (!str_contains($url, 'connect_timeout=')) {
+        $url .= '&connect_timeout=5';
+    }
+
+    return $url;
 }
 
 $onRailway = (bool) (getenv('RAILWAY_ENVIRONMENT') ?: getenv('RAILWAY_PROJECT_ID') ?: getenv('RAILWAY_SERVICE_ID'));
@@ -85,7 +97,7 @@ foreach (
     [
         'MYSQLHOST', 'MYSQL_HOST', 'MYSQLPORT', 'MYSQL_PORT',
         'MYSQLUSER', 'MYSQL_USER', 'MYSQLPASSWORD', 'MYSQL_PASSWORD',
-        'MYSQLDATABASE', 'MYSQL_DATABASE', 'MYSQL_URL', 'DATABASE_URL',
+        'MYSQLDATABASE', 'MYSQL_DATABASE', 'MYSQL_URL', 'MYSQL_PUBLIC_URL', 'DATABASE_URL',
     ] as $name
 ) {
     log_env($name);
@@ -93,27 +105,28 @@ foreach (
 
 $url = '';
 
-$host = strip_quotes(getenv('MYSQLHOST') ?: getenv('MYSQL_HOST') ?: '');
-$user = strip_quotes(getenv('MYSQLUSER') ?: getenv('MYSQL_USER') ?: '');
-$pass = strip_quotes(getenv('MYSQLPASSWORD') ?: getenv('MYSQL_PASSWORD') ?: getenv('MYSQL_ROOT_PASSWORD') ?: '') ?? '';
-$db = strip_quotes(getenv('MYSQLDATABASE') ?: getenv('MYSQL_DATABASE') ?: '');
-$port = strip_quotes(getenv('MYSQLPORT') ?: getenv('MYSQL_PORT') ?: '3306') ?? '3306';
+// 1) Railway MySQL references (MYSQLHOST, not MYSQL_HOST=db from docker-compose)
+$host = strip_quotes(getenv('MYSQLHOST') ?: '');
+$user = strip_quotes(getenv('MYSQLUSER') ?: '');
+$pass = strip_quotes(getenv('MYSQLPASSWORD') ?: getenv('MYSQL_ROOT_PASSWORD') ?: '') ?? '';
+$db = strip_quotes(getenv('MYSQLDATABASE') ?: '');
+$port = strip_quotes(getenv('MYSQLPORT') ?: '3306') ?? '3306';
 
-// On Railway, never use docker-compose hostname "db"
-if ($onRailway && $host === 'db') {
-    fwrite(STDERR, "WARNING: MYSQL_HOST=db is for Docker Compose only. Ignoring on Railway.\n");
-    $host = '';
+if ($onRailway && $host === '') {
+    $dockerHost = strip_quotes(getenv('MYSQL_HOST') ?: '');
+    if ($dockerHost === 'db') {
+        fwrite(STDERR, "WARNING: Remove MYSQL_HOST=db from Railway app variables (Docker Compose only).\n");
+    }
 }
 
-if ($host && $user && $db && !isUnresolvedTemplate($host) && !isUnresolvedTemplate($user) && !isUnresolvedTemplate($db)) {
+if ($host && $user && $db && !isUnresolvedTemplate($host)) {
     $url = buildUrl($host, $user, $pass, $db, $port);
-    fwrite(STDERR, "Built DATABASE_URL from MySQL variables.\n");
-} elseif ($host && isUnresolvedTemplate($host)) {
-    fwrite(STDERR, "WARNING: MYSQLHOST still contains Railway template syntax (\${{...}}). Use Variable References on the app service.\n");
+    fwrite(STDERR, "Built DATABASE_URL from MYSQLHOST/MYSQLUSER references.\n");
 }
 
+// 2) Full URL references from MySQL service
 if ($url === '') {
-    foreach (['MYSQL_URL', 'MYSQL_PRIVATE_URL', 'DATABASE_URL'] as $var) {
+    foreach (['MYSQL_URL', 'MYSQL_PRIVATE_URL'] as $var) {
         $candidate = strip_quotes(getenv($var) ?: '');
         if (isUsableUrl($candidate, $onRailway)) {
             $url = $candidate;
@@ -123,28 +136,40 @@ if ($url === '') {
     }
 }
 
+// 3) Public TCP URL (works when mysql.railway.internal private DNS times out)
+if ($url === '' && $onRailway) {
+    $public = strip_quotes(getenv('MYSQL_PUBLIC_URL') ?: '');
+    if (isUsableUrl($public, $onRailway, false)) {
+        $url = $public;
+        fwrite(STDERR, "Using MYSQL_PUBLIC_URL for database connection.\n");
+    }
+}
+
+// 4) Legacy DATABASE_URL on app (skip known-bad docker-compose host "db")
 if ($url === '') {
-    fwrite(STDERR, "\nERROR: DATABASE_URL is invalid or incomplete.\n");
-    fwrite(STDERR, "Your URL looks like: mysql://:@host:3306/  (missing user, password, database).\n");
+    $candidate = strip_quotes(getenv('DATABASE_URL') ?: '');
+    if (isUsableUrl($candidate, $onRailway)) {
+        $url = $candidate;
+        fwrite(STDERR, "Using DATABASE_URL for database connection.\n");
+    }
+}
+
+if ($url === '') {
+    fwrite(STDERR, "\nERROR: No valid database configuration.\n");
     if ($onRailway) {
-        fwrite(STDERR, "\nRailway fix (do NOT copy/paste strings with \${{...}}):\n");
-        fwrite(STDERR, "  App service → Variables → New Variable → Variable Reference → MySQL → pick:\n");
-        fwrite(STDERR, "    MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
-        fwrite(STDERR, "  OR one reference: DATABASE_URL → MySQL → MYSQL_URL\n");
+        fwrite(STDERR, "On Railway APP service: delete MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT.\n");
+        fwrite(STDERR, "Then add ONE variable reference from MySQL service:\n");
+        fwrite(STDERR, "  DATABASE_URL → MYSQL_PUBLIC_URL  (recommended if private network times out)\n");
+        fwrite(STDERR, "  OR DATABASE_URL → MYSQL_URL\n");
+        fwrite(STDERR, "  OR references: MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE\n");
     }
     exit(1);
 }
 
-if (!str_contains($url, 'serverVersion=')) {
-    $url .= (str_contains($url, '?') ? '&' : '?').'serverVersion=8.0.32&charset=utf8mb4';
-}
-
-if (!str_contains($url, 'connect_timeout=')) {
-    $url .= '&connect_timeout=5';
-}
+$url = appendParams($url);
 
 $parts = parse_url($url);
-fwrite(STDERR, sprintf("Database host: %s\n", $parts['host'] ?? 'unknown'));
+fwrite(STDERR, sprintf("Database host: %s (port %s)\n", $parts['host'] ?? 'unknown', $parts['port'] ?? '3306'));
 fwrite(STDERR, "==================================\n");
 
 echo $url;
