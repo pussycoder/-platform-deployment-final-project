@@ -18,8 +18,11 @@ mkdir -p /app/var/cache /app/var/log
 chown www-data:www-data /app/.env.local
 
 echo "Compiling environment for production..."
-su -s /bin/sh www-data -c "cd /app && composer dump-env prod"
-chown www-data:www-data /app/.env.local.php 2>/dev/null || true
+if su -s /bin/sh www-data -c "php bin/console dotenv:dump prod"; then
+  chown www-data:www-data /app/.env.local.php
+else
+  echo "WARNING: dotenv:dump failed; using .env.local only."
+fi
 chown -R www-data:www-data /app/var
 chmod -R 775 /app/var
 
